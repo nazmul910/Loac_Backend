@@ -4,39 +4,64 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 
 const app = express();
-const port = process.env.PORT || 5000 ;
-
+const port = process.env.PORT || 3000;
+const mongoUri = process.env.MONGO_URI;
 
 app.use(cors());
 app.use(express.json());
 
-mongoose.connect(process.env.MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-}).then(() => console.log('MongoDB connected'))
-  .catch(err => console.error('MongoDB connection error:', err));
-
 const locationSchema = new mongoose.Schema({
-  latitude: Number,
-  longitude: Number,
+  latitude: { type: Number, required: true, min: -90, max: 90 },
+  longitude: { type: Number, required: true, min: -180, max: 180 },
   timestamp: { type: Date, default: Date.now },
 });
 
 const Location = mongoose.model('Location', locationSchema);
 
-app.get('/',(req,res) =>{
-  res.send("Hello Nazmul Hasan");
- 
+app.get('/', (req, res) => {
+  res.send('Hello Nazmul Hasan');
 });
 
 app.post('/location', async (req, res) => {
   const { latitude, longitude } = req.body;
-  const location = new Location({ latitude, longitude });
-  await location.save();
-  console.log('Saved location:', latitude, longitude);
-  res.json({ message: 'Location saved in database!' });
+
+  if (
+    typeof latitude !== 'number' ||
+    !Number.isFinite(latitude) ||
+    latitude < -90 ||
+    latitude > 90 ||
+    typeof longitude !== 'number' ||
+    !Number.isFinite(longitude) ||
+    longitude < -180 ||
+    longitude > 180
+  ) {
+    return res.status(400).json({ message: 'Valid latitude and longitude are required.' });
+  }
+
+  try {
+    const location = await Location.create({ latitude, longitude });
+    console.log('Saved location:', location._id.toString());
+    return res.status(201).json({ message: 'Location saved in database!', id: location._id });
+  } catch (error) {
+    console.error('Error saving location:', error);
+    return res.status(500).json({ message: 'Could not save location.' });
+  }
 });
 
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
+async function startServer() {
+  if (!mongoUri) {
+    throw new Error('MONGO_URI must be configured.');
+  }
+
+  await mongoose.connect(mongoUri);
+  console.log(`MongoDB connected to database "${mongoose.connection.name}"`);
+
+  app.listen(port, () => {
+    console.log(`Server running on port ${port}`);
+  });
+}
+
+startServer().catch((error) => {
+  console.error('Could not start server:', error);
+  process.exit(1);
 });
